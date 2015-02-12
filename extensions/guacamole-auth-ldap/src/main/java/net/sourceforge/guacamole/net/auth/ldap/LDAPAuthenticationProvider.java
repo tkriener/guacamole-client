@@ -1,4 +1,3 @@
-
 package net.sourceforge.guacamole.net.auth.ldap;
 
 /* ***** BEGIN LICENSE BLOCK *****
@@ -99,63 +98,97 @@ public class LDAPAuthenticationProvider extends SimpleAuthenticationProvider {
 
     // Courtesy of OWASP: https://www.owasp.org/index.php/Preventing_LDAP_Injection_in_Java
     private static String escapeDN(String name) {
-       StringBuilder sb = new StringBuilder();
-       if ((name.length() > 0) && ((name.charAt(0) == ' ') || (name.charAt(0) == '#'))) {
-           sb.append('\\'); // add the leading backslash if needed
-       }
-       for (int i = 0; i < name.length(); i++) {
-           char curChar = name.charAt(i);
-           switch (curChar) {
-               case '\\':
-                   sb.append("\\\\");
-                   break;
-               case ',':
-                   sb.append("\\,");
-                   break;
-               case '+':
-                   sb.append("\\+");
-                   break;
-               case '"':
-                   sb.append("\\\"");
-                   break;
-               case '<':
-                   sb.append("\\<");
-                   break;
-               case '>':
-                   sb.append("\\>");
-                   break;
-               case ';':
-                   sb.append("\\;");
-                   break;
-               default:
-                   sb.append(curChar);
-           }
-       }
-       if ((name.length() > 1) && (name.charAt(name.length() - 1) == ' ')) {
-           sb.insert(sb.length() - 1, '\\'); // add the trailing backslash if needed
-       }
-       return sb.toString();
-   }
+        StringBuilder sb = new StringBuilder();
+        if ((name.length() > 0) && ((name.charAt(0) == ' ') || (name.charAt(0) == '#'))) {
+            sb.append('\\'); // add the leading backslash if needed
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char curChar = name.charAt(i);
+            switch (curChar) {
+                case '\\':
+                    sb.append("\\\\");
+                    break;
+                case ',':
+                    sb.append("\\,");
+                    break;
+                case '+':
+                    sb.append("\\+");
+                    break;
+                case '"':
+                    sb.append("\\\"");
+                    break;
+                case '<':
+                    sb.append("\\<");
+                    break;
+                case '>':
+                    sb.append("\\>");
+                    break;
+                case ';':
+                    sb.append("\\;");
+                    break;
+                default:
+                    sb.append(curChar);
+            }
+        }
+        if ((name.length() > 1) && (name.charAt(name.length() - 1) == ' ')) {
+            sb.insert(sb.length() - 1, '\\'); // add the trailing backslash if needed
+        }
+        return sb.toString();
+    }
 
 
     @Override
     public Map<String, GuacamoleConfiguration> getAuthorizedConfigurations(Credentials credentials) throws GuacamoleException {
 
+        // Get username attribute
+        String username_attribute = GuacamoleProperties.getRequiredProperty(
+                LDAPGuacamoleProperties.LDAP_USERNAME_ATTRIBUTE
+        );
+
+        // Get user base DN
+        String user_base_dn = GuacamoleProperties.getRequiredProperty(
+                LDAPGuacamoleProperties.LDAP_USER_BASE_DN
+        );
+
+       String user_dn = "";
+       String bind_dn = "";
+       byte[] bind_password = null;
+       
         try {
+            if (credentials.getRequest().getRemoteUser() != null) {
+                // trust the external authentication already done by servlet-container
+                logger.error("Remote-User set");
+                
+                // Construct user DN
+                user_dn = escapeDN(username_attribute) + "=" + escapeDN(credentials.getRequest().getRemoteUser())
+                        + "," + user_base_dn;
+                
+                bind_dn = "";
+            } else {
+                // Require username
+                if (credentials.getUsername() == null) {
+                    logger.info("Anonymous bind is not currently allowed by the LDAP authentication provider.");
+                    return null;
+                }
 
-            // Require username
-            if (credentials.getUsername() == null) {
-                logger.info("Anonymous bind is not currently allowed by the LDAP authentication provider.");
-                return null;
+                // Require password, and do not allow anonymous binding
+                if (credentials.getPassword() == null
+                        || credentials.getPassword().length() == 0) {
+                    logger.info("Anonymous bind is not currently allowed by the LDAP authentication provider.");
+                    return null;
+                }
+
+                // Construct user DN
+                user_dn
+                        = escapeDN(username_attribute) + "=" + escapeDN(credentials.getUsername())
+                        + "," + user_base_dn;
+                bind_dn = user_dn;
+                try {
+                    bind_password = credentials.getPassword().getBytes("UTF-8");
+                } catch (UnsupportedEncodingException e) {
+                    throw new GuacamoleException(e);
+                }
             }
-
-            // Require password, and do not allow anonymous binding
-            if (credentials.getPassword() == null
-                    || credentials.getPassword().length() == 0) {
-                logger.info("Anonymous bind is not currently allowed by the LDAP authentication provider.");
-                return null;
-            }
-
             // Connect to LDAP server
             LDAPConnection ldapConnection = new LDAPConnection();
             ldapConnection.connect(
@@ -163,32 +196,12 @@ public class LDAPAuthenticationProvider extends SimpleAuthenticationProvider {
                     GuacamoleProperties.getRequiredProperty(LDAPGuacamoleProperties.LDAP_PORT)
             );
 
-            // Get username attribute
-            String username_attribute = GuacamoleProperties.getRequiredProperty(
-                LDAPGuacamoleProperties.LDAP_USERNAME_ATTRIBUTE
-            );
-
-            // Get user base DN
-            String user_base_dn = GuacamoleProperties.getRequiredProperty(
-                    LDAPGuacamoleProperties.LDAP_USER_BASE_DN
-            );
-
-            // Construct user DN
-            String user_dn =
-                escapeDN(username_attribute) + "=" + escapeDN(credentials.getUsername())
-                + "," + user_base_dn;
-
             // Bind as user
-            try {
-                ldapConnection.bind(
-                        LDAPConnection.LDAP_V3,
-                        user_dn,
-                        credentials.getPassword().getBytes("UTF-8")
-                );
-            }
-            catch (UnsupportedEncodingException e) {
-                throw new GuacamoleException(e);
-            }
+            ldapConnection.bind(
+                    LDAPConnection.LDAP_V3,
+                    bind_dn,
+                    bind_password
+            );
 
             // Get config base DN
             String config_base_dn = GuacamoleProperties.getRequiredProperty(
@@ -215,13 +228,15 @@ public class LDAPAuthenticationProvider extends SimpleAuthenticationProvider {
 
                 // Get CN
                 LDAPAttribute cn = entry.getAttribute("cn");
-                if (cn == null)
+                if (cn == null) {
                     throw new GuacamoleException("guacConfigGroup without cn");
+                }
 
                 // Get protocol
                 LDAPAttribute protocol = entry.getAttribute("guacConfigProtocol");
-                if (protocol == null)
+                if (protocol == null) {
                     throw new GuacamoleException("guacConfigGroup without guacConfigProtocol");
+                }
 
                 // Set protocol
                 config.setProtocol(protocol.getStringValue());
@@ -242,7 +257,7 @@ public class LDAPAuthenticationProvider extends SimpleAuthenticationProvider {
 
                             // Parse name
                             String name = parameter.substring(0, equals);
-                            String value = parameter.substring(equals+1);
+                            String value = parameter.substring(equals + 1);
 
                             config.setParameter(name, value);
 
@@ -261,8 +276,7 @@ public class LDAPAuthenticationProvider extends SimpleAuthenticationProvider {
             ldapConnection.disconnect();
             return configs;
 
-        }
-        catch (LDAPException e) {
+        } catch (LDAPException e) {
             throw new GuacamoleException(e);
         }
 
