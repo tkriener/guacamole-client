@@ -25,7 +25,6 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import net.sourceforge.guacamole.net.basic.redirectlogout.RedirectLogoutGuacamoleProperties;
 import org.glyptodon.guacamole.GuacamoleException;
 import org.glyptodon.guacamole.properties.GuacamoleProperties;
 
