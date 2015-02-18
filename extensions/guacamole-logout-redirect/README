@@ -1,0 +1,69 @@
+
+------------------------------------------------------------
+ About this README
+------------------------------------------------------------
+
+This README is intended to provide quick and to-the-point documentation for
+technical users intending to compile parts of Guacamole themselves.
+
+Distribution-specific packages are available from the files section of the main
+project page:
+ 
+    http://sourceforge.net/projects/guacamole/files/
+
+Distribution-specific documentation is provided on the Guacamole wiki:
+
+    http://guac-dev.org/
+
+
+------------------------------------------------------------
+ What is guacamole-logout-redirect?
+------------------------------------------------------------
+
+guacamole-logout-redirect is a Java library for use with the Guacamole web
+application to redirect the user to a specific URL when logging out.
+
+------------------------------------------------------------
+ Compiling and installing guacamole-logout-redirect
+------------------------------------------------------------
+
+guacamole-logout-redirect is built using Maven. Building guacamole-logout-redirect
+compiles all classes and packages them into a redistributable .jar file. This
+.jar file can be installed in the library directory configured in
+guacamole.properties such that the authentication provider is available.
+
+1) Run mvn package
+
+    $ mvn package
+
+    Maven will download any needed dependencies for building the .jar file.
+    Once all dependencies have been downloaded, the .jar file will be
+    created in the target/ subdirectory of the current directory.
+
+2) Copy the .jar file into the library directory of the WAR-File
+
+    You will likely need to do this as root.
+
+3) change web.xml to use the servlet
+
+    change the following tag
+    <!-- Basic Logout Servlet -->
+    <servlet>
+        <description>Logout servlet.</description>
+        <servlet-name>Logout</servlet-name>
+        <servlet-class>org.glyptodon.guacamole.net.basic.BasicLogout</servlet-class>
+    </servlet>
+
+    to use the new RedirectLogout
+
+    <!-- Basic Logout Servlet -->
+    <servlet>
+        <description>Logout servlet.</description>
+        <servlet-name>Logout</servlet-name>
+        <servlet-class>net.sourceforge.guacamole.net.basic.redirectlogout.RedirectLogout</servlet-class>
+    </servlet>
+
+4) Configure guacamole.properties for the url
+
+    redirect-url: https://myserver.local/    
+
